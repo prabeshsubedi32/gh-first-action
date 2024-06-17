@@ -8,3 +8,48 @@ jobs:
         run: echo "Hello World!"
       - name: Print goodbye
         run: echo "Done- bye!"
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Get the latest version tag
+        id: get_latest_version
+        run: |
+          LATEST_TAG=$(git tag --sort=-v:refname | head -n 1)
+          if [[ -z "$LATEST_TAG" ]]; then
+            LATEST_MAJOR_VERSION=0
+            LATEST_MINOR_VERSION=0
+          else
+            LATEST_MAJOR_VERSION=$(echo $LATEST_TAG | cut -d '.' -f 1 | sed 's/v//')
+            LATEST_MINOR_VERSION=$(echo $LATEST_TAG | cut -d '.' -f 2)
+          fi
+          echo "LATEST_MAJOR_VERSION=$LATEST_MAJOR_VERSION" >> $GITHUB_ENV
+          echo "LATEST_MINOR_VERSION=$LATEST_MINOR_VERSION" >> $GITHUB_ENV
+
+      - name: Increment the version
+        id: increment_version
+        run: |
+          NEW_MINOR_VERSION=$((LATEST_MINOR_VERSION + 1))
+          NEW_MAJOR_VERSION=$LATEST_MAJOR_VERSION
+          if [[ $NEW_MINOR_VERSION -eq 100 ]]; then
+            NEW_MINOR_VERSION=0
+            NEW_MAJOR_VERSION=$((LATEST_MAJOR_VERSION + 1))
+          fi
+          echo "NEW_MAJOR_VERSION=$NEW_MAJOR_VERSION" >> $GITHUB_ENV
+          echo "NEW_MINOR_VERSION=$NEW_MINOR_VERSION" >> $GITHUB_ENV
+
+      - name: Create and push new version tag
+        run: |
+          NEW_TAG=v${{ env.NEW_MAJOR_VERSION }}.${{ env.NEW_MINOR_VERSION }}
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output new tag
+        run: echo "NEW_TAG=v${{ env.NEW_MAJOR_VERSION }}.${{ env.NEW_MINOR_VERSION }}" >> $GITHUB_ENV
