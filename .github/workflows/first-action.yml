@@ -15,6 +15,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+      - name: Get all relevant tags
+        id: gettags
+        uses: jupyterhub/action-major-minor-tag-calculator@v3
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          prefix: "my-username/my-image-name:"
+          branchRegex: "^[^/]+$"
+      - name: Print Tag
+        run: echo ${{ fromJson(steps.gettags.outputs.tags) }}
       - name: Get the latest version tag
         id: get_latest_version
         run: |
