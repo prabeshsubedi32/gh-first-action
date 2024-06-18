@@ -1,64 +1,59 @@
-name: First Workflow
-on: workflow_dispatch
+name: Generate and Push Tag
+
+on:
+  push:
+    branches:
+      - main # Trigger on push to the main branch, adjust as needed
+
 jobs:
-  first-job:
+  tag:
     runs-on: ubuntu-latest
     steps:
-      - name: Print greeting
-        run: echo "Hello World!"
-      - name: Print goodbye
-        run: echo "Done- bye!"
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Get all relevant tags
-        id: gettags
-        uses: jupyterhub/action-major-minor-tag-calculator@v3
-        with:
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-          prefix: "my-username/my-image-name:"
-          branchRegex: "^[^/]+$"
-      - name: Print Tag
-        run: echo ${{ fromJson(steps.gettags.outputs.tags) }}
-      - name: Get the latest version tag
-        id: get_latest_version
+      - name: Set up Git
         run: |
-          LATEST_TAG=$(git tag --sort=-v:refname | head -n 1)
-          if [[ -z "$LATEST_TAG" ]]; then
-            LATEST_MAJOR_VERSION=0
-            LATEST_MINOR_VERSION=0
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Get the latest tag
+        id: get-latest-tag
+        run: |
+          git fetch --tags
+          LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+          echo "::set-output name=latest-tag::$LATEST_TAG"
+
+      - name: Calculate new version
+        id: calc-new-version
+        run: |
+          LATEST_TAG=${{ steps.get-latest-tag.outputs.latest-tag }}
+          echo "Latest tag is $LATEST_TAG"
+
+          # Extract the major, minor, and patch parts of the version
+          VERSION_REGEX="^v([0-9]+)\.([0-9]+)\.([0-9]+)$"
+          if [[ $LATEST_TAG =~ $VERSION_REGEX ]]; then
+            MAJOR=${BASH_REMATCH[1]}
+            MINOR=${BASH_REMATCH[2]}
+            PATCH=${BASH_REMATCH[3]}
           else
-            LATEST_MAJOR_VERSION=$(echo $LATEST_TAG | cut -d '.' -f 1 | sed 's/v//')
-            LATEST_MINOR_VERSION=$(echo $LATEST_TAG | cut -d '.' -f 2)
+            MAJOR=0
+            MINOR=0
+            PATCH=0
           fi
-          echo "LATEST_MAJOR_VERSION=$LATEST_MAJOR_VERSION" >> $GITHUB_ENV
-          echo "LATEST_MINOR_VERSION=$LATEST_MINOR_VERSION" >> $GITHUB_ENV
 
-      - name: Increment the version
-        id: increment_version
-        run: |
-          NEW_MINOR_VERSION=$((LATEST_MINOR_VERSION + 1))
-          NEW_MAJOR_VERSION=$LATEST_MAJOR_VERSION
-          if [[ $NEW_MINOR_VERSION -eq 100 ]]; then
-            NEW_MINOR_VERSION=0
-            NEW_MAJOR_VERSION=$((LATEST_MAJOR_VERSION + 1))
-          fi
-          echo "NEW_MAJOR_VERSION=$NEW_MAJOR_VERSION" >> $GITHUB_ENV
-          echo "NEW_MINOR_VERSION=$NEW_MINOR_VERSION" >> $GITHUB_ENV
+          # Increment the minor version
+          MINOR=$((MINOR + 1))
 
-      - name: Create and push new version tag
+          # Create new tag
+          NEW_TAG="v${MAJOR}.${MINOR}.0"
+          echo "New tag will be $NEW_TAG"
+          echo "::set-output name=new-tag::$NEW_TAG"
+
+      - name: Create and push tag
+        env:
+          NEW_TAG: ${{ steps.calc-new-version.outputs.new-tag }}
         run: |
-          NEW_TAG=v${{ env.NEW_MAJOR_VERSION }}.${{ env.NEW_MINOR_VERSION }}
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
           git tag $NEW_TAG
           git push origin $NEW_TAG
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Output new tag
-        run: echo "NEW_TAG=v${{ env.NEW_MAJOR_VERSION }}.${{ env.NEW_MINOR_VERSION }}" >> $GITHUB_ENV
