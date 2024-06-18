@@ -1,6 +1,7 @@
 name: Generate and Push Tag
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main # Trigger on push to the main branch, adjust as needed
